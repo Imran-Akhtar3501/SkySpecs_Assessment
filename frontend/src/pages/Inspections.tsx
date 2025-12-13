@@ -18,7 +18,6 @@ export const Inspections: React.FC = () => {
   const { user } = useAuth();
   const [inspections, setInspections] = useState<Inspection[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [filters, setFilters] = useState({
     startDate: '',
@@ -33,20 +32,10 @@ export const Inspections: React.FC = () => {
   });
 
   useEffect(() => {
-    if (turbineId) {
-      setLoading(true);
-      setError(null);
-      loadInspections();
-    }
-  }, [turbineId, filters.startDate, filters.endDate, filters.dataSource]);
+    loadInspections();
+  }, [turbineId, filters]);
 
   const loadInspections = async () => {
-    if (!turbineId) {
-      setError('Turbine ID is missing');
-      setLoading(false);
-      return;
-    }
-    
     try {
       const params = new URLSearchParams();
       if (filters.startDate) params.append('startDate', filters.startDate);
@@ -56,12 +45,9 @@ export const Inspections: React.FC = () => {
       const data = await apiRequest<{ data: Inspection[] }>(
         `/api/turbines/${turbineId}/inspections?${params.toString()}`
       );
-      setInspections(data.data || []);
-      setError(null);
-    } catch (error: any) {
+      setInspections(data.data);
+    } catch (error) {
       console.error('Failed to load inspections:', error);
-      setError(error.message || 'Failed to load inspections');
-      setInspections([]);
     } finally {
       setLoading(false);
     }
@@ -69,11 +55,6 @@ export const Inspections: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!turbineId) {
-      alert('Turbine ID is missing');
-      return;
-    }
-    
     try {
       await apiRequest<Inspection>(`/api/turbines/${turbineId}/inspections`, {
         method: 'POST',
@@ -81,55 +62,19 @@ export const Inspections: React.FC = () => {
       });
       setFormData({ date: '', inspectorName: '', dataSource: 'DRONE', rawPackageUrl: '' });
       setShowForm(false);
-      setError(null);
-      await loadInspections();
+      loadInspections();
     } catch (error: any) {
-      alert(error.message || 'Failed to create inspection');
+      alert(error.message);
     }
   };
 
-  if (!turbineId) {
-    return (
-      <div>
-        <div style={{ marginBottom: '2rem' }}>
-          <Link to="/turbines" style={{ color: '#007bff', textDecoration: 'none' }}>← Back to Turbines</Link>
-        </div>
-        <div style={{ padding: '2rem', textAlign: 'center', color: '#dc3545' }}>
-          Invalid turbine ID
-        </div>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div>
-        <div style={{ marginBottom: '2rem' }}>
-          <Link to="/turbines" style={{ color: '#007bff', textDecoration: 'none' }}>← Back to Turbines</Link>
-        </div>
-        <div style={{ padding: '2rem', textAlign: 'center' }}>Loading inspections...</div>
-      </div>
-    );
-  }
+  if (loading) return <div>Loading...</div>;
 
   return (
     <div>
       <div style={{ marginBottom: '2rem' }}>
         <Link to="/turbines" style={{ color: '#007bff', textDecoration: 'none' }}>← Back to Turbines</Link>
       </div>
-      
-      {error && (
-        <div style={{
-          background: '#fee',
-          color: '#c33',
-          padding: '1rem',
-          borderRadius: '8px',
-          marginBottom: '2rem',
-          border: '1px solid #fcc',
-        }}>
-          {error}
-        </div>
-      )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <h1>Inspections</h1>
@@ -257,17 +202,6 @@ export const Inspections: React.FC = () => {
       )}
 
       <div style={{ display: 'grid', gap: '1rem' }}>
-        {inspections.length === 0 && !error && (
-          <div style={{
-            background: 'white',
-            padding: '2rem',
-            borderRadius: '8px',
-            textAlign: 'center',
-            color: '#666',
-          }}>
-            No inspections found. Create one to get started.
-          </div>
-        )}
         {inspections.map((inspection) => (
           <div key={inspection.id} style={{
             background: 'white',
