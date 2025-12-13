@@ -1,8 +1,12 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import swaggerUi from 'swagger-ui-express';
@@ -10,7 +14,7 @@ import yaml from 'yaml';
 import { ApolloServer } from 'apollo-server-express';
 import { initializeMongo } from './config/database.js';
 import { getSseClients, setIOServer } from './services/sse.js';
-import { authMiddleware, getAuthContext, type AuthRequest } from './middleware/auth.js';
+import { authMiddleware, getAuthContext, verifyToken, type AuthRequest } from './middleware/auth.js';
 import { resolvers as graphqlResolvers, type GraphQLContext } from './graphql/resolvers.js';
 import authRoutes from './routes/auth.js';
 import turbineRoutes from './routes/turbines.js';
@@ -41,9 +45,15 @@ io.on('connection', (socket) => {
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:4000', 'http://localhost:5173', 'http://127.0.0.1:4000'],
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:4000',
+    'http://localhost:5173',
+    'http://127.0.0.1:4000',
+    'https://studio.apollographql.com', // Apollo Studio
+  ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'apollographql-client-name', 'apollographql-client-version'],
   credentials: true,
 }));
 
@@ -89,16 +99,106 @@ app.get('/api/events', (req, res) => {
 });
 
 // GraphQL
-const schemaPath = path.join(process.cwd(), 'src/graphql/schema.graphql');
+// Try multiple paths to find schema file (works in dev and production)
+let schemaPath = path.join(process.cwd(), 'src/graphql/schema.graphql');
+if (!existsSync(schemaPath)) {
+  schemaPath = path.join(process.cwd(), 'backend/src/graphql/schema.graphql');
+}
+if (!existsSync(schemaPath)) {
+  schemaPath = path.join(__dirname, '../graphql/schema.graphql');
+}
+
+if (!existsSync(schemaPath)) {
+  console.error('❌ GraphQL schema file not found! Tried:', [
+    path.join(process.cwd(), 'src/graphql/schema.graphql'),
+    path.join(process.cwd(), 'backend/src/graphql/schema.graphql'),
+    path.join(__dirname, '../graphql/schema.graphql'),
+  ]);
+  process.exit(1);
+}
+
 const typeDefs = readFileSync(schemaPath, 'utf8');
+console.log(`📋 GraphQL schema loaded from: ${schemaPath}`);
 
 const server = new ApolloServer({
   typeDefs,
   resolvers: graphqlResolvers,
-  context: ({ req }: any) => {
-    const authContext = getAuthContext(req as AuthRequest);
-    return authContext as GraphQLContext;
+  introspection: true, // Enable introspection for Apollo Studio
+  context: ({ req, connection }: any) => {
+    // Handle both HTTP requests and WebSocket connections
+    // For HTTP requests, use req; for subscriptions, use connection
+    const request = req || connection?.context?.req;
+    
+    if (!request) {
+      return {
+        userId: undefined,
+        email: undefined,
+        role: undefined,
+        isAuthenticated: false,
+      } as GraphQLContext;
+    }
+    
+    // Extract token from Authorization header for GraphQL
+    // Express normalizes headers to lowercase, so check 'authorization' first
+    const authHeader = 
+      request.headers?.authorization || 
+      request.headers?.Authorization ||
+      request.headers?.['authorization'] ||
+      request.headers?.['Authorization'] ||
+      (request.header && typeof request.header === 'function' ? request.header('authorization') : null) ||
+      (request.header && typeof request.header === 'function' ? request.header('Authorization') : null);
+    
+    let token: string | undefined;
+    
+    if (authHeader) {
+      // Handle both "Bearer token" and just "token"
+      const headerValue = typeof authHeader === 'string' ? authHeader : authHeader[0];
+      token = headerValue?.startsWith('Bearer ') 
+        ? headerValue.replace('Bearer ', '').trim() 
+        : headerValue?.trim();
+    }
+    
+    // If token exists, verify it and set user context
+    if (token) {
+      try {
+        const decoded = verifyToken(token);
+        console.log('✅ GraphQL: Token verified for user:', decoded.email);
+        return {
+          userId: decoded.userId,
+          email: decoded.email,
+          role: decoded.role,
+          isAuthenticated: true,
+        } as GraphQLContext;
+      } catch (error: any) {
+        console.log('❌ GraphQL: Token verification failed:', error.message);
+        // Token invalid, return unauthenticated context
+        return {
+          userId: undefined,
+          email: undefined,
+          role: undefined,
+          isAuthenticated: false,
+        } as GraphQLContext;
+      }
+    }
+    
+    // Debug: log when no token is found
+    console.log('⚠️ GraphQL: No authorization token found. Headers:', {
+      authorization: request.headers?.authorization,
+      Authorization: request.headers?.Authorization,
+      allHeaders: Object.keys(request.headers || {}),
+    });
+    
+    // No token provided, return unauthenticated context
+    return {
+      userId: undefined,
+      email: undefined,
+      role: undefined,
+      isAuthenticated: false,
+    } as GraphQLContext;
   },
+  // Allow Apollo Studio to connect
+  csrfPrevention: false, // Disable CSRF for local development
+  cache: 'bounded',
 });
 
 // Server startup
@@ -110,7 +210,7 @@ const port = Number(process.env.PORT || 4000);
     server.applyMiddleware({
       app: app as any,
       path: '/graphql',
-      cors: { origin: true, credentials: true },
+      cors: false, // CORS is already handled by Express middleware above
     });
 
     await initializeMongo();

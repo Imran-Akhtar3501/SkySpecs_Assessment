@@ -41,9 +41,17 @@ export const resolvers = {
   Query: {
     me: async (_: any, __: any, context: GraphQLContext) => {
       requireAuth(context);
-      return prisma.user.findUnique({
+      const user = await prisma.user.findUnique({
         where: { id: context.userId! },
       });
+      if (!user) return null;
+      // Return user without passwordHash
+      return {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      };
     },
 
     turbines: async (_: any, { limit = 50, offset = 0 }: any, context: GraphQLContext) => {
@@ -138,7 +146,16 @@ export const resolvers = {
       if (!valid) throw new Error('Invalid password');
 
       const token = generateToken(user.id, user.email, user.role);
-      return { token, user };
+      // Return user without passwordHash
+      return { 
+        token, 
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+        }
+      };
     },
 
     createTurbine: async (
