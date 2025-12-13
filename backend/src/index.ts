@@ -19,7 +19,7 @@ app.get('/api/healthz', (_req, res) => res.json({ ok: true }));
 // Swagger
 const openapiPath = path.join(process.cwd(), 'openapi.yaml');
 const openapiDoc = yaml.parse(readFileSync(openapiPath, 'utf8'));
-app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapiDoc));
+app.use('/api/docs', swaggerUi.serve as any, swaggerUi.setup(openapiDoc) as any);
 
 // Prisma
 const prisma = new PrismaClient();
@@ -32,7 +32,7 @@ let mongoClient: MongoClient | null = null;
   try {
     mongoClient = new MongoClient(mongoUrl);
     await mongoClient.connect();
-    console.log('Mongo connected');
+    console.log('Mongo connected ✅✅✅');
   } catch (e) {
     console.warn('Mongo unavailable yet:', (e as Error).message);
   }
@@ -93,7 +93,7 @@ const resolvers = {
       // Severity rule: if category=BLADE_DAMAGE and notes contain "crack", min severity=4
       const adjusted = inspection.findings.map(f => {
         const hasCrack = (f.notes || '').toLowerCase().includes('crack');
-        const severity = (f.category === 'BLADE_DAMAGE' and hasCrack) ? Math.max(4, f.severity) : f.severity;
+        const severity = (f.category === 'BLADE_DAMAGE' && hasCrack) ? Math.max(4, f.severity) : f.severity;
         return { ...f, severity };
       });
 
@@ -130,7 +130,7 @@ const resolvers = {
 
 const server = new ApolloServer({ typeDefs, resolvers });
 await server.start();
-server.applyMiddleware({ app, path: '/graphql' });
+server.applyMiddleware({ app: app as any, path: '/graphql' });
 
 const port = Number(process.env.PORT || 4000);
-app.listen(port, () => console.log(`Backend on http://localhost:${port}`));
+app.listen(port, () => console.log(`Backend on http://localhost:${port} 🌐🌐🌐`));
