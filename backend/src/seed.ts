@@ -4,11 +4,11 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  // users
+  // users - seeded with known passwords for testing
   const users = [
-    { email: 'admin@example.com', name: 'Admin', role: 'ADMIN', password: 'admin123' },
-    { email: 'eng@example.com', name: 'Engineer', role: 'ENGINEER', password: 'engineer123' },
-    { email: 'viewer@example.com', name: 'Viewer', role: 'VIEWER', password: 'viewer123' },
+    { email: 'admin@example.com', name: 'Admin', role: 'ADMIN', password: 'Password123!' },
+    { email: 'engineer@example.com', name: 'Engineer', role: 'ENGINEER', password: 'Password123!' },
+    { email: 'viewer@example.com', name: 'Viewer', role: 'VIEWER', password: 'Password123!' },
   ] as const;
 
   for (const u of users) {

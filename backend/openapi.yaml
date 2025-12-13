@@ -1,22 +1,654 @@
 openapi: 3.0.3
 info:
-  title: TurbineOps Lite REST API
-  version: 0.1.0
+  title: TurbineOps REST API
+  description: Turbine inspection and maintenance management API
+  version: 1.0.0
+  contact:
+    name: API Support
 servers:
   - url: http://localhost:4000/api
+    description: Local development server
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'Bearer token obtained from /auth/login endpoint'
+
+  schemas:
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT token for authentication
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+            email:
+              type: string
+            name:
+              type: string
+            role:
+              type: string
+              enum: [ADMIN, ENGINEER, VIEWER]
+
+    Turbine:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        manufacturer:
+          type: string
+        mwRating:
+          type: number
+          nullable: true
+        lat:
+          type: number
+          nullable: true
+        lng:
+          type: number
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    Inspection:
+      type: object
+      properties:
+        id:
+          type: string
+        turbineId:
+          type: string
+        date:
+          type: string
+          format: date
+        dataSource:
+          type: string
+          enum: [DRONE, MANUAL]
+        createdAt:
+          type: string
+          format: date-time
+
+    Finding:
+      type: object
+      properties:
+        id:
+          type: string
+        inspectionId:
+          type: string
+        category:
+          type: string
+          enum: [BLADE_DAMAGE, LIGHTNING, EROSION, UNKNOWN]
+        severity:
+          type: integer
+          minimum: 1
+          maximum: 5
+        notes:
+          type: string
+
+    RepairPlan:
+      type: object
+      properties:
+        id:
+          type: string
+        inspectionId:
+          type: string
+        priority:
+          type: string
+          enum: [LOW, MEDIUM, HIGH]
+        estimatedCost:
+          type: number
+
+security:
+  - BearerAuth: []
+
 paths:
   /healthz:
     get:
       summary: Health check
+      security: []
+      tags: [Health]
       responses:
         '200':
-          description: OK
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+
+  /auth/login:
+    post:
+      summary: User login
+      security: []
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: admin@example.com
+                password:
+                  type: string
+                  format: password
+                  example: admin123
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Invalid request
+        '401':
+          description: Invalid credentials
+
   /turbines:
     get:
       summary: List turbines
+      tags: [Turbines]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+          description: Number of results to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Number of results to skip
       responses:
-        '200': { description: OK }
+        '200':
+          description: Turbines list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Turbine'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '401':
+          description: Unauthorized
+
     post:
       summary: Create turbine
+      tags: [Turbines]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  example: "Turbine-001"
+                manufacturer:
+                  type: string
+                  example: "GE Wind"
+                mwRating:
+                  type: number
+                  description: Power rating in megawatts
+                  example: 2.5
+                lat:
+                  type: number
+                  description: Latitude coordinate
+                  example: 40.7128
+                lng:
+                  type: number
+                  description: Longitude coordinate
+                  example: -74.0060
       responses:
-        '201': { description: Created }
+        '201':
+          description: Turbine created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Turbine'
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - requires ADMIN or ENGINEER role
+
+  /turbines/{id}:
+    get:
+      summary: Get turbine details
+      tags: [Turbines]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Turbine details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Turbine'
+        '401':
+          description: Unauthorized
+        '404':
+          description: Turbine not found
+
+    put:
+      summary: Update turbine
+      tags: [Turbines]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                manufacturer:
+                  type: string
+                mwRating:
+                  type: number
+                lat:
+                  type: number
+                lng:
+                  type: number
+      responses:
+        '200':
+          description: Turbine updated
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - requires ADMIN or ENGINEER role
+        '404':
+          description: Turbine not found
+
+    delete:
+      summary: Delete turbine
+      tags: [Turbines]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Turbine deleted
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - requires ADMIN role
+        '404':
+          description: Turbine not found
+
+
+  /inspections:
+    get:
+      summary: List inspections (optionally filter by turbine)
+      tags: [Inspections]
+      parameters:
+        - name: turbineId
+          in: query
+          schema:
+            type: string
+          description: Filter inspections by turbine ID
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+          description: Number of results to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Number of results to skip
+      responses:
+        '200':
+          description: Inspections list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Inspection'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '401':
+          description: Unauthorized
+    post:
+      summary: Create inspection
+      tags: [Inspections]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - turbineId
+                - date
+                - dataSource
+              properties:
+                turbineId:
+                  type: string
+                date:
+                  type: string
+                  format: date
+                dataSource:
+                  type: string
+                  enum: [DRONE, MANUAL]
+                inspectorName:
+                  type: string
+                rawPackageUrl:
+                  type: string
+      responses:
+        '201':
+          description: Inspection created
+        '400':
+          description: Invalid request or overlap detected
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - requires ADMIN or ENGINEER role
+
+  /inspections/{id}:
+    get:
+      summary: Get inspection details
+      tags: [Inspections]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Inspection details
+        '401':
+          description: Unauthorized
+        '404':
+          description: Inspection not found
+
+    put:
+      summary: Update inspection
+      tags: [Inspections]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                date:
+                  type: string
+                  format: date
+                dataSource:
+                  type: string
+                  enum: [DRONE, MANUAL]
+      responses:
+        '200':
+          description: Inspection updated
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - requires ADMIN or ENGINEER role
+
+    delete:
+      summary: Delete inspection
+      tags: [Inspections]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Inspection deleted
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - requires ADMIN role
+
+  /inspections/{inspectionId}/findings:
+    post:
+      summary: Create finding
+      tags: [Findings]
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - category
+                - severity
+              properties:
+                category:
+                  type: string
+                  enum: [BLADE_DAMAGE, LIGHTNING, EROSION, UNKNOWN]
+                severity:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                notes:
+                  type: string
+      responses:
+        '201':
+          description: Finding created
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - requires ADMIN or ENGINEER role
+
+  /findings/{id}:
+    get:
+      summary: Get finding details
+      tags: [Findings]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Finding details
+        '401':
+          description: Unauthorized
+
+    put:
+      summary: Update finding
+      tags: [Findings]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                category:
+                  type: string
+                  enum: [BLADE_DAMAGE, LIGHTNING, EROSION, UNKNOWN]
+                severity:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Finding updated
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - requires ADMIN or ENGINEER role
+
+    delete:
+      summary: Delete finding
+      tags: [Findings]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Finding deleted
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - requires ADMIN role
+
+  /inspections/{inspectionId}/repair-plan:
+    post:
+      summary: Generate repair plan
+      tags: [RepairPlan]
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Repair plan generated
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - requires ADMIN or ENGINEER role
+
+    get:
+      summary: Get repair plan
+      tags: [RepairPlan]
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Repair plan details
+        '401':
+          description: Unauthorized
+        '404':
+          description: Repair plan not found
+
+    put:
+      summary: Update repair plan
+      tags: [RepairPlan]
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                priority:
+                  type: string
+                  enum: [LOW, MEDIUM, HIGH]
+                estimatedCost:
+                  type: number
+      responses:
+        '200':
+          description: Repair plan updated
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - requires ADMIN role
+
+    delete:
+      summary: Delete repair plan
+      tags: [RepairPlan]
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Repair plan deleted
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - requires ADMIN role

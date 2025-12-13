@@ -39,12 +39,14 @@ model Inspection {
   inspectorName String?
   dataSource    DataSource
   rawPackageUrl String?
-  turbine       Turbine  @relation(fields: [turbineId], references: [id])
+  turbine       Turbine  @relation(fields: [turbineId], references: [id], onDelete: Cascade)
   turbineId     String
   findings      Finding[]
   repairPlan    RepairPlan?
   createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
+  @@unique([turbineId, date])
   @@index([turbineId, date])
 }
 
@@ -59,9 +61,10 @@ model Finding {
   severity      Int
   estimatedCost Float
   notes         String?
-  inspection    Inspection @relation(fields: [inspectionId], references: [id])
+  inspection    Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
   inspectionId  String
   createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([inspectionId])
 }
@@ -75,12 +78,13 @@ enum FindingCategory {
 
 model RepairPlan {
   id                 String   @id @default(cuid())
-  inspection         Inspection @relation(fields: [inspectionId], references: [id])
+  inspection         Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
   inspectionId       String   @unique
   priority           Priority
   totalEstimatedCost Float
   snapshotJson       Json
   createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 enum Priority {

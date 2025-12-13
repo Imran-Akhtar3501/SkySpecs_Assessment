@@ -3,17 +3,54 @@ import express from 'express';
 import cors from 'cors';
 import { readFileSync } from 'fs';
 import path from 'path';
+import { createServer } from 'http';
+import { Server as SocketIOServer } from 'socket.io';
 import swaggerUi from 'swagger-ui-express';
 import yaml from 'yaml';
 import { ApolloServer } from 'apollo-server-express';
-import { PrismaClient } from '@prisma/client';
-import { MongoClient } from 'mongodb';
+import { initializeMongo } from './config/database.js';
+import { getSseClients, setIOServer } from './services/sse.js';
+import { authMiddleware, getAuthContext, type AuthRequest } from './middleware/auth.js';
+import { resolvers as graphqlResolvers, type GraphQLContext } from './graphql/resolvers.js';
+import authRoutes from './routes/auth.js';
+import turbineRoutes from './routes/turbines.js';
+import inspectionRoutes from './routes/inspections.js';
+import findingRoutes from './routes/findings.js';
+import repairPlanRoutes from './routes/repair-plans.js';
 
 const app = express();
-app.use(cors());
+const httpServer = createServer(app);
+
+// WebSocket Server
+const io = new SocketIOServer(httpServer, {
+  cors: {
+    origin: ['http://localhost:3000', 'http://localhost:4000', 'http://localhost:5173', 'http://127.0.0.1:4000'],
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
+});
+
+setIOServer(io);
+
+io.on('connection', (socket) => {
+  console.log('WebSocket client connected:', socket.id);
+  socket.on('disconnect', () => {
+    console.log('WebSocket client disconnected:', socket.id);
+  });
+});
+
+// Middleware
+app.use(cors({
+  origin: ['http://localhost:3000', 'http://localhost:4000', 'http://localhost:5173', 'http://127.0.0.1:4000'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+}));
+
 app.use(express.json());
 
-// Health
+// Health check
+app.get('/health', (_req, res) => res.json({ ok: true, timestamp: new Date().toISOString() }));
 app.get('/api/healthz', (_req, res) => res.json({ ok: true }));
 
 // Swagger
@@ -21,116 +58,76 @@ const openapiPath = path.join(process.cwd(), 'openapi.yaml');
 const openapiDoc = yaml.parse(readFileSync(openapiPath, 'utf8'));
 app.use('/api/docs', swaggerUi.serve as any, swaggerUi.setup(openapiDoc) as any);
 
-// Prisma
-const prisma = new PrismaClient();
+// Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/turbines', turbineRoutes);
+app.use('/api/inspections', inspectionRoutes);
+app.use('/api/findings', findingRoutes);
+app.use('/api/repair-plans', repairPlanRoutes);
 
-// Mongo
-const mongoUrl = process.env.MONGO_URL || 'mongodb://localhost:27017';
-const mongoDbName = process.env.MONGO_DB || 'turbineops';
-let mongoClient: MongoClient | null = null;
-(async () => {
-  try {
-    mongoClient = new MongoClient(mongoUrl);
-    await mongoClient.connect();
-    console.log('Mongo connected ✅✅✅');
-  } catch (e) {
-    console.warn('Mongo unavailable yet:', (e as Error).message);
-  }
-})();
-
-// Simple REST stubs
-app.get('/api/turbines', async (_req, res) => {
-  const data = await prisma.turbine.findMany({ take: 50 });
-  res.json(data);
+// SSE Events - fallback for clients that don't support WebSocket
+app.get('/sse/repairplans', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+  res.flushHeaders();
+  res.write(`event: ping\ndata: ${JSON.stringify({ ok: true, at: new Date().toISOString() })}\n\n`);
+  getSseClients().add(res);
+  req.on('close', () => getSseClients().delete(res));
 });
 
-app.post('/api/turbines', async (req, res) => {
-  const { name, manufacturer, mwRating, lat, lng } = req.body || {};
-  if (!name) return res.status(400).json({ error: 'name required' });
-  const t = await prisma.turbine.create({ data: { name, manufacturer, mwRating, lat, lng } });
-  res.status(201).json(t);
-});
-
-// SSE for plan notifications
-const sseClients = new Set<any>();
+// Legacy SSE endpoint
 app.get('/api/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
-  res.write(`event: ping
-data: ok
-
-`);
-  sseClients.add(res);
-  req.on('close', () => sseClients.delete(res));
+  res.write(`event: ping\ndata: ok\n\n`);
+  getSseClients().add(res);
+  req.on('close', () => getSseClients().delete(res));
 });
 
-function notifyPlan(inspectionId: string) {
-  for (const client of sseClients) {
-    client.write(`event: plan
-data: ${JSON.stringify({ inspectionId, at: new Date().toISOString() })}
-
-`);
-  }
-}
-
 // GraphQL
-const typeDefs = readFileSync(path.join(process.cwd(), 'src/graphql/schema.graphql'), 'utf8');
-const resolvers = {
-  Query: {
-    inspection: async (_: any, { id }: any) => prisma.inspection.findUnique({
-      where: { id },
-      include: { turbine: true, findings: true, repairPlan: true },
-    }),
-    repairPlan: async (_: any, { inspectionId }: any) => prisma.repairPlan.findUnique({ where: { inspectionId } }),
+const schemaPath = path.join(process.cwd(), 'src/graphql/schema.graphql');
+const typeDefs = readFileSync(schemaPath, 'utf8');
+
+const server = new ApolloServer({
+  typeDefs,
+  resolvers: graphqlResolvers,
+  context: ({ req }: any) => {
+    const authContext = getAuthContext(req as AuthRequest);
+    return authContext as GraphQLContext;
   },
-  Mutation: {
-    generateRepairPlan: async (_: any, { inspectionId }: any) => {
-      const inspection = await prisma.inspection.findUnique({ where: { id: inspectionId }, include: { findings: true } });
-      if (!inspection) throw new Error('Inspection not found');
+});
 
-      // Severity rule: if category=BLADE_DAMAGE and notes contain "crack", min severity=4
-      const adjusted = inspection.findings.map(f => {
-        const hasCrack = (f.notes || '').toLowerCase().includes('crack');
-        const severity = (f.category === 'BLADE_DAMAGE' && hasCrack) ? Math.max(4, f.severity) : f.severity;
-        return { ...f, severity };
-      });
-
-      const total = adjusted.reduce((s, f) => s + Number(f.estimatedCost || 0), 0);
-      const maxSeverity = Math.max(0, ...adjusted.map(f => f.severity));
-      const priority = maxSeverity >= 5 ? 'HIGH' : (maxSeverity >= 3 ? 'MEDIUM' : 'LOW');
-
-      const plan = await prisma.repairPlan.upsert({
-        where: { inspectionId },
-        update: { priority: priority as any, totalEstimatedCost: total, snapshotJson: adjusted },
-        create: { inspectionId, priority: priority as any, totalEstimatedCost: total, snapshotJson: adjusted },
-      });
-
-      notifyPlan(inspectionId);
-
-      // mongo log (best-effort)
-      try {
-        if (mongoClient) {
-          const db = mongoClient.db(mongoDbName);
-          await db.collection('ingestion_logs').insertOne({
-            kind: 'PLAN_GENERATED',
-            inspectionId,
-            at: new Date(),
-            total,
-            priority,
-          });
-        }
-      } catch {}
-
-      return plan;
-    },
-  },
-};
-
-const server = new ApolloServer({ typeDefs, resolvers });
-await server.start();
-server.applyMiddleware({ app: app as any, path: '/graphql' });
-
+// Server startup
 const port = Number(process.env.PORT || 4000);
-app.listen(port, () => console.log(`Backend on http://localhost:${port} 🌐🌐🌐`));
+
+(async () => {
+  try {
+    await server.start();
+    server.applyMiddleware({
+      app: app as any,
+      path: '/graphql',
+      cors: { origin: true, credentials: true },
+    });
+
+    await initializeMongo();
+    
+    await new Promise<void>((resolve) => {
+      httpServer.listen(port, () => {
+        console.log(`🚀 Backend running on http://localhost:${port}`);
+        console.log(`📚 GraphQL: http://localhost:${port}/graphql`);
+        console.log(`📖 API Docs: http://localhost:${port}/api/docs`);
+        console.log(`🔌 WebSocket: ws://localhost:${port}`);
+        console.log(`📡 SSE: http://localhost:${port}/sse/repairplans`);
+        console.log('✅ Ready to use');
+        resolve();
+      });
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+})();

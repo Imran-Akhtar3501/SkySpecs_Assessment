@@ -1,3 +1,22 @@
+enum Role {
+  ADMIN
+  ENGINEER
+  VIEWER
+}
+
+type User {
+  id: ID!
+  email: String!
+  name: String!
+  role: Role!
+  createdAt: String!
+}
+
+type AuthPayload {
+  token: String!
+  user: User!
+}
+
 type Turbine {
   id: ID!
   name: String!
@@ -6,6 +25,8 @@ type Turbine {
   lat: Float
   lng: Float
   inspections: [Inspection!]!
+  createdAt: String!
+  updatedAt: String!
 }
 
 enum DataSource {
@@ -22,6 +43,8 @@ type Inspection {
   turbine: Turbine!
   findings: [Finding!]!
   repairPlan: RepairPlan
+  createdAt: String!
+  updatedAt: String!
 }
 
 enum FindingCategory {
@@ -37,6 +60,9 @@ type Finding {
   severity: Int!
   estimatedCost: Float!
   notes: String
+  inspection: Inspection!
+  createdAt: String!
+  updatedAt: String!
 }
 
 enum Priority {
@@ -49,14 +75,114 @@ type RepairPlan {
   id: ID!
   priority: Priority!
   totalEstimatedCost: Float!
+  inspection: Inspection!
+  snapshotJson: String
   createdAt: String!
+  updatedAt: String!
+}
+
+type PaginatedTurbines {
+  data: [Turbine!]!
+  total: Int!
+  limit: Int!
+  offset: Int!
+}
+
+type PaginatedInspections {
+  data: [Inspection!]!
+  total: Int!
+  limit: Int!
+  offset: Int!
 }
 
 type Query {
+  # Auth
+  me: User
+  
+  # Turbines
+  turbines(limit: Int, offset: Int): PaginatedTurbines!
+  turbine(id: ID!): Turbine
+  
+  # Inspections
+  inspections(
+    turbineId: ID
+    startDate: String
+    endDate: String
+    dataSource: DataSource
+    limit: Int
+    offset: Int
+  ): PaginatedInspections!
   inspection(id: ID!): Inspection
+  
+  # Findings
+  findings(inspectionId: ID!, searchNotes: String): [Finding!]!
+  
+  # Repair Plans
   repairPlan(inspectionId: ID!): RepairPlan
 }
 
 type Mutation {
+  # Auth
+  login(email: String!, password: String!): AuthPayload!
+  
+  # Turbines
+  createTurbine(
+    name: String!
+    manufacturer: String
+    mwRating: Float
+    lat: Float
+    lng: Float
+  ): Turbine!
+  
+  updateTurbine(
+    id: ID!
+    name: String
+    manufacturer: String
+    mwRating: Float
+    lat: Float
+    lng: Float
+  ): Turbine!
+  
+  deleteTurbine(id: ID!): Boolean!
+  
+  # Inspections
+  createInspection(
+    turbineId: ID!
+    date: String!
+    inspectorName: String
+    dataSource: DataSource!
+    rawPackageUrl: String
+  ): Inspection!
+  
+  updateInspection(
+    id: ID!
+    date: String
+    inspectorName: String
+    dataSource: DataSource
+    rawPackageUrl: String
+  ): Inspection!
+  
+  deleteInspection(id: ID!): Boolean!
+  
+  # Findings
+  createFinding(
+    inspectionId: ID!
+    category: FindingCategory!
+    severity: Int!
+    estimatedCost: Float!
+    notes: String
+  ): Finding!
+  
+  updateFinding(
+    id: ID!
+    category: FindingCategory
+    severity: Int
+    estimatedCost: Float
+    notes: String
+  ): Finding!
+  
+  deleteFinding(id: ID!): Boolean!
+  
+  # Repair Plans
   generateRepairPlan(inspectionId: ID!): RepairPlan!
 }

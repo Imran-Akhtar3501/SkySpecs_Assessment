@@ -1,43 +1,80 @@
-import React, { useEffect, useState } from 'react'
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from '../contexts/AuthContext';
+import { Layout } from '../components/Layout';
+import { ProtectedRoute } from '../components/ProtectedRoute';
+import { Login } from './Login';
+import { Turbines } from './Turbines';
+import { Inspections } from './Inspections';
+import { Findings } from './Findings';
+import { RepairPlans } from './RepairPlans';
 
-type Turbine = { id: string; name: string }
-
-export const App: React.FC = () => {
-  const [turbines, setTurbines] = useState<Turbine[]>([])
-  const [name, setName] = useState('')
-
-  useEffect(() => {
-    fetch(import.meta.env.VITE_API_BASE + '/api/turbines')
-      .then(r => r.json())
-      .then(setTurbines)
-      .catch(() => setTurbines([]))
-  }, [])
-
-  const create = async () => {
-    if (!name) return
-    const r = await fetch(import.meta.env.VITE_API_BASE + '/api/turbines', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name })
-    })
-    const t = await r.json()
-    setTurbines(prev => [t, ...prev])
-    setName('')
-  }
+const AppRoutes: React.FC = () => {
+  const { isAuthenticated } = useAuth();
 
   return (
-    <div style={{ padding: 24, fontFamily: 'sans-serif' }}>
-      <h1>TurbineOps Lite</h1>
-      <p>Starter UI – list/create turbines via REST. Extend with Inspections, Findings, and Repair Plans.</p>
+    <Routes>
+      <Route 
+        path="/login" 
+        element={
+          isAuthenticated ? (
+            <Navigate to="/turbines" replace />
+          ) : (
+            <Login />
+          )
+        } 
+      />
+      <Route
+        path="/turbines"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Turbines />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/turbines/:turbineId/inspections"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Inspections />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/inspections/:inspectionId/findings"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Findings />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/repair-plans"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <RepairPlans />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route path="/" element={<Navigate to="/turbines" replace />} />
+    </Routes>
+  );
+};
 
-      <div style={{ marginBottom: 16 }}>
-        <input placeholder="New turbine name" value={name} onChange={e => setName(e.target.value)} />
-        <button onClick={create} style={{ marginLeft: 8 }}>Create</button>
-      </div>
-
-      <ul>
-        {turbines.map(t => <li key={t.id}>{t.name}</li>)}
-      </ul>
-    </div>
-  )
-}
+export const App: React.FC = () => {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </BrowserRouter>
+  );
+};
