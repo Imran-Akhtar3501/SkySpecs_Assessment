@@ -1,9 +1,15 @@
-FROM node:20-alpine
+FROM node:20-slim
 WORKDIR /app
+
+# Install OpenSSL for Prisma and wait script dependencies
+RUN apt-get update && apt-get install -y openssl postgresql-client && rm -rf /var/lib/apt/lists/*
+
 COPY package*.json ./
 RUN npm install
 COPY . .
 RUN npm run build && npx prisma generate
 ENV NODE_ENV=production
 EXPOSE 4000
-CMD ["sh", "-c", "npm run prisma:deploy && node dist/index.js"]
+
+# Wait for postgres to be ready, then run migrations, seed database, and start server
+CMD ["sh", "-c", "until pg_isready -h postgres -p 5432 -U app; do echo 'Waiting for postgres...'; sleep 2; done && npm run prisma:deploy && echo 'Running seed script...' && node dist/seed.js && echo 'Seed completed. Starting server...' && node dist/index.js"]

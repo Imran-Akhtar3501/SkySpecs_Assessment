@@ -26,9 +26,13 @@ const app = express();
 const httpServer = createServer(app);
 
 // WebSocket Server
+const allowedOrigins = process.env.CORS_ORIGINS 
+  ? process.env.CORS_ORIGINS.split(',')
+  : ['http://localhost:3000', 'http://localhost:4000', 'http://localhost:5173', 'http://127.0.0.1:4000'];
+
 const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: ['http://localhost:3000', 'http://localhost:4000', 'http://localhost:5173', 'http://127.0.0.1:4000'],
+    origin: allowedOrigins,
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -44,14 +48,18 @@ io.on('connection', (socket) => {
 });
 
 // Middleware
+const corsOrigins = process.env.CORS_ORIGINS 
+  ? process.env.CORS_ORIGINS.split(',')
+  : [
+      'http://localhost:3000',
+      'http://localhost:4000',
+      'http://localhost:5173',
+      'http://127.0.0.1:4000',
+      'https://studio.apollographql.com', // Apollo Studio
+    ];
+
 app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:4000',
-    'http://localhost:5173',
-    'http://127.0.0.1:4000',
-    'https://studio.apollographql.com', // Apollo Studio
-  ],
+  origin: corsOrigins,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'apollographql-client-name', 'apollographql-client-version'],
   credentials: true,
@@ -216,12 +224,13 @@ const port = Number(process.env.PORT || 4000);
     await initializeMongo();
     
     await new Promise<void>((resolve) => {
-      httpServer.listen(port, () => {
-        console.log(`🚀 Backend running on http://localhost:${port}`);
-        console.log(`📚 GraphQL: http://localhost:${port}/graphql`);
-        console.log(`📖 API Docs: http://localhost:${port}/api/docs`);
-        console.log(`🔌 WebSocket: ws://localhost:${port}`);
-        console.log(`📡 SSE: http://localhost:${port}/sse/repairplans`);
+      httpServer.listen(port, '0.0.0.0', () => {
+        const host = process.env.HOST || 'localhost';
+        console.log(`🚀 Backend running on http://${host}:${port}`);
+        console.log(`📚 GraphQL: http://${host}:${port}/graphql`);
+        console.log(`📖 API Docs: http://${host}:${port}/api/docs`);
+        console.log(`🔌 WebSocket: ws://${host}:${port}`);
+        console.log(`📡 SSE: http://${host}:${port}/sse/repairplans`);
         console.log('✅ Ready to use');
         resolve();
       });
