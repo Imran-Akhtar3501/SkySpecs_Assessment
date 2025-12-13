@@ -1,0 +1,62 @@
+type Turbine {
+  id: ID!
+  name: String!
+  manufacturer: String
+  mwRating: Float
+  lat: Float
+  lng: Float
+  inspections: [Inspection!]!
+}
+
+enum DataSource {
+  DRONE
+  MANUAL
+}
+
+type Inspection {
+  id: ID!
+  date: String!
+  inspectorName: String
+  dataSource: DataSource!
+  rawPackageUrl: String
+  turbine: Turbine!
+  findings: [Finding!]!
+  repairPlan: RepairPlan
+}
+
+enum FindingCategory {
+  BLADE_DAMAGE
+  LIGHTNING
+  EROSION
+  UNKNOWN
+}
+
+type Finding {
+  id: ID!
+  category: FindingCategory!
+  severity: Int!
+  estimatedCost: Float!
+  notes: String
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+type RepairPlan {
+  id: ID!
+  priority: Priority!
+  totalEstimatedCost: Float!
+  createdAt: String!
+}
+
+type Query {
+  inspection(id: ID!): Inspection
+  repairPlan(inspectionId: ID!): RepairPlan
+}
+
+type Mutation {
+  generateRepairPlan(inspectionId: ID!): RepairPlan!
+}

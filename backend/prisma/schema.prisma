@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id    String  @id @default(cuid())
+  email String  @unique
+  name  String
+  role  Role
+  passwordHash String
+}
+
+enum Role {
+  ADMIN
+  ENGINEER
+  VIEWER
+}
+
+model Turbine {
+  id         String   @id @default(cuid())
+  name       String
+  manufacturer String?
+  mwRating   Float?
+  lat        Float?
+  lng        Float?
+  inspections Inspection[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Inspection {
+  id            String   @id @default(cuid())
+  date          DateTime
+  inspectorName String?
+  dataSource    DataSource
+  rawPackageUrl String?
+  turbine       Turbine  @relation(fields: [turbineId], references: [id])
+  turbineId     String
+  findings      Finding[]
+  repairPlan    RepairPlan?
+  createdAt     DateTime @default(now())
+
+  @@index([turbineId, date])
+}
+
+enum DataSource {
+  DRONE
+  MANUAL
+}
+
+model Finding {
+  id            String   @id @default(cuid())
+  category      FindingCategory
+  severity      Int
+  estimatedCost Float
+  notes         String?
+  inspection    Inspection @relation(fields: [inspectionId], references: [id])
+  inspectionId  String
+  createdAt     DateTime @default(now())
+
+  @@index([inspectionId])
+}
+
+enum FindingCategory {
+  BLADE_DAMAGE
+  LIGHTNING
+  EROSION
+  UNKNOWN
+}
+
+model RepairPlan {
+  id                 String   @id @default(cuid())
+  inspection         Inspection @relation(fields: [inspectionId], references: [id])
+  inspectionId       String   @unique
+  priority           Priority
+  totalEstimatedCost Float
+  snapshotJson       Json
+  createdAt          DateTime @default(now())
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}

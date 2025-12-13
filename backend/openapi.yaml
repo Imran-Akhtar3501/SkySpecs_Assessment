@@ -1,0 +1,22 @@
+openapi: 3.0.3
+info:
+  title: TurbineOps Lite REST API
+  version: 0.1.0
+servers:
+  - url: http://localhost:4000/api
+paths:
+  /healthz:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+  /turbines:
+    get:
+      summary: List turbines
+      responses:
+        '200': { description: OK }
+    post:
+      summary: Create turbine
+      responses:
+        '201': { description: Created }
