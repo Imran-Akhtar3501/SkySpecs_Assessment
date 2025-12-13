@@ -33,9 +33,14 @@ export const Inspections: React.FC = () => {
 
   useEffect(() => {
     loadInspections();
-  }, [turbineId, filters]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turbineId, filters.startDate, filters.endDate, filters.dataSource]);
 
   const loadInspections = async () => {
+    if (!turbineId) {
+      setLoading(false);
+      return;
+    }
     try {
       const params = new URLSearchParams();
       if (filters.startDate) params.append('startDate', filters.startDate);
@@ -43,11 +48,12 @@ export const Inspections: React.FC = () => {
       if (filters.dataSource) params.append('dataSource', filters.dataSource);
       
       const data = await apiRequest<{ data: Inspection[] }>(
-        `/api/turbines/${turbineId}/inspections?${params.toString()}`
+        `/api/inspections/turbines/${turbineId}/inspections?${params.toString()}`
       );
-      setInspections(data.data);
+      setInspections(data.data || []);
     } catch (error) {
       console.error('Failed to load inspections:', error);
+      setInspections([]);
     } finally {
       setLoading(false);
     }
@@ -55,8 +61,12 @@ export const Inspections: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!turbineId) {
+      alert('Turbine ID is missing');
+      return;
+    }
     try {
-      await apiRequest<Inspection>(`/api/turbines/${turbineId}/inspections`, {
+      await apiRequest<Inspection>(`/api/inspections/turbines/${turbineId}/inspections`, {
         method: 'POST',
         body: JSON.stringify(formData),
       });
@@ -64,7 +74,7 @@ export const Inspections: React.FC = () => {
       setShowForm(false);
       loadInspections();
     } catch (error: any) {
-      alert(error.message);
+      alert(error.message || 'Failed to create inspection');
     }
   };
 

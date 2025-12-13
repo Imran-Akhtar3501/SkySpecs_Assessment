@@ -1,5 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
+// Use the same API base as the api utility
+// @ts-ignore - Vite env types
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000';
+
 interface User {
   id: string;
   email: string;
@@ -31,22 +35,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (email: string, password: string) => {
-    const response = await fetch('http://localhost:4000/api/auth/login', {
+    const response = await fetch(`${API_BASE}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
 
     if (!response.ok) {
-      const error = await response.json();
+      const error = await response.json().catch(() => ({ error: 'Login failed' }));
       throw new Error(error.error || 'Login failed');
     }
 
     const data = await response.json();
+    
+    // Ensure we have both token and user
+    if (!data.token) {
+      throw new Error('Invalid response from server: missing token');
+    }
+
+    if (!data.user) {
+      throw new Error('Invalid response from server: missing user data');
+    }
+
+    const userData: User = {
+      id: data.user.id,
+      email: data.user.email,
+      name: data.user.name,
+      role: data.user.role,
+    };
+
+    // Update state synchronously
     setToken(data.token);
-    setUser(data.user);
+    setUser(userData);
     localStorage.setItem('token', data.token);
-    localStorage.setItem('user', JSON.stringify(data.user));
+    localStorage.setItem('user', JSON.stringify(userData));
   };
 
   const logout = () => {

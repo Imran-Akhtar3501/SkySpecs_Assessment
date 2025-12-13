@@ -14,7 +14,7 @@ const AppRoutes: React.FC = () => {
 
   return (
     <Routes>
-      <Route path="/login" element={isAuthenticated ? <Navigate to="/turbines" replace /> : <Login />} />
+      <Route path="/login" element={<Login />} />
       <Route
         path="/turbines"
         element={
@@ -55,7 +55,7 @@ const AppRoutes: React.FC = () => {
           </ProtectedRoute>
         }
       />
-      <Route path="/" element={<Navigate to="/turbines" replace />} />
+      <Route path="/" element={<Navigate to={isAuthenticated ? "/turbines" : "/login"} replace />} />
     </Routes>
   );
 };
