@@ -105,6 +105,39 @@ npm run test:frontend
 └── docker-compose.yml
 ```
 
+## Design Decisions
+
+### Architecture
+
+Used a layered architecture (presentation → API → business logic → data access → database) for maintainability and testability. Both REST and GraphQL APIs share the same business logic layer to avoid duplication while serving different client needs.
+
+### Database
+
+PostgreSQL handles all relational data with unique constraints preventing overlapping inspections at the database level. Cascade deletes maintain referential integrity. MongoDB is optional for unstructured inspection logs and can be toggled via environment variable.
+
+### Authentication
+
+JWT tokens with 24-hour expiration provide stateless authentication. Three roles (ADMIN, ENGINEER, VIEWER) are enforced via middleware before requests reach business logic.
+
+### Real-time Updates
+
+WebSocket (Socket.IO) is the primary method for real-time notifications. The frontend automatically falls back to Server-Sent Events if WebSocket fails, ensuring reliability across different network environments.
+
+### Business Rules
+
+BLADE_DAMAGE findings with "crack" in notes automatically get minimum severity 4. This rule is enforced at finding creation, updates, and repair plan generation. API responses include a `severityAdjusted` flag when auto-upgraded.
+
+### Technology Choices
+
+- **TypeScript**: Type safety catches errors early and improves developer experience
+- **Prisma**: Type-safe database access with automatic migrations
+- **React + Vite**: Fast development with modern React patterns
+- **Docker Compose**: Consistent development and deployment environment
+
+### Testing
+
+Unit tests cover business logic (severity rules, priority calculation). Integration tests verify API endpoints with real database operations. Workflow tests ensure complete user journeys work end-to-end.
+
 ## License
 
 This is a case study project for evaluation purposes.
