@@ -7,8 +7,8 @@ import jwt from 'jsonwebtoken';
 // Import app setup
 import express from 'express';
 import cors from 'cors';
-import { authMiddleware, generateToken } from '../middleware/auth.js';
-import { prisma } from '../config/database.js';
+import { authMiddleware, generateToken } from '../middleware/auth';
+import { prisma } from '../config/database';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key-change-in-prod';
 
